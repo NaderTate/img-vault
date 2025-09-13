@@ -1,0 +1,47 @@
+{% macro tag_chip(tag, removable=False, image_id=None) %}
+<span class="chip" style="--c: {{ tag.color or '#444' }}">
+  {{ tag.name }} {% if removable %}
+  <form
+    class="inline"
+    method="post"
+    action="/images/{{ image_id }}/tags/remove"
+  >
+    <input type="hidden" name="tag_id" value="{{ tag.id }}" />
+    <button title="Remove">×</button>
+  </form>
+  {% endif %}
+</span>
+{% endmacro %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or 'Image Vault' }}</title>
+    <link rel="stylesheet" href="/static/app.css?v={{ range(1000, 9999) | random }}" />
+  </head>
+  <body>
+    <header class="topbar">
+      <nav>
+        <a href="/images" class="brand">📁 Image Vault</a>
+        <a href="/tags">Tags</a>
+        <a href="/settings">Settings</a>
+        <form class="search" method="get" action="/images">
+          <input
+            name="q"
+            value="{{ q or '' }}"
+            placeholder="Search filename…"
+          />
+          {% if active_tag %}<input
+            type="hidden"
+            name="tag"
+            value="{{ active_tag }}"
+          />{% endif %}
+          <button>Search</button>
+        </form>
+      </nav>
+    </header>
+    <main style="margin: 10px">{% block content %}{% endblock %}</main>
+  </body>
+</html>

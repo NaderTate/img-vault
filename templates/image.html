@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>{{ image.filename }}</h1>
+<div class="detail">
+  <img src="/thumb/{{ image.id }}?w=1200" alt="{{ image.filename }}" />
+  <aside>
+    <section>
+      <h3>Info</h3>
+      <div class="kv"><b>Path</b><code>{{ image.path }}</code></div>
+      <div class="kv"><b>Size</b><span>{{ image.width }}×{{ image.height }}, {{ image.size }} bytes</span></div>
+      <div class="kv"><b>Modified</b><span>{{ image.mtime | datetime }}</span></div>
+      <div class="kv"><b>Hash</b><code>{{ image.file_hash or '—' }}</code></div>
+      <div class="kv"><b>Open</b><a href="/media/{{ image.id }}" target="_blank">original</a> | <button type="button" onclick="openFolder({{ image.id }})" class="folder-btn">📁 Open Folder</button></div>
+      <div class="kv">
+        <b>Actions</b>
+        <form method="post" action="/images/{{ image.id }}/delete" style="display: inline;" 
+              onsubmit="return confirm('Delete this image? This will permanently remove the file from your vault and cannot be undone.')">
+          <button type="submit" class="danger">🗑️ Delete Image</button>
+        </form>
+      </div>
+    </section>
+    <section>
+      <h3>Tags</h3>
+      <div class="chips">
+        {% for t in image_tags %}{{ tag_chip(t, True, image.id) }}{% endfor %}
+      </div>
+      <form method="post" action="/images/{{ image.id }}/tags/assign">
+        <input name="name" placeholder="Add tag" list="taglist" />
+        <button>Add</button>
+      </form>
+      <div class="quick">
+        {% for t in quick_tags %}
+        <form method="post" action="/images/{{ image.id }}/tags/assign" class="inline">
+          <input type="hidden" name="name" value="{{ t.name }}" />
+          <button type="submit" class="pill">+ {{ t.name }}</button>
+        </form>
+        {% endfor %}
+      </div>
+    </section>
+  </aside>
+</div>
+
+<datalist id="taglist">
+  {% for t in tags %}<option value="{{ t.name }}">{% endfor %}
+</datalist>
+
+<script>
+async function openFolder(imageId) {
+    try {
+        const response = await fetch(`/images/${imageId}/open_folder`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Folder opened successfully');
+        } else {
+            const error = await response.text();
+            alert(`Failed to open folder: ${error}`);
+        }
+    } catch (err) {
+        console.error('Error opening folder:', err);
+        alert('Error opening folder. Please check the console for details.');
+    }
+}
+</script>
+{% endblock %}

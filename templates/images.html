@@ -1,0 +1,748 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Images</h1>
+<div class="controls">
+  <form class="filters" method="get" action="/images" id="filterForm">
+    <input type="hidden" name="q" value="{{ q or '' }}" />
+    <div class="filter-group">
+      <label>Include tags:</label>
+      <div class="tag-selector-container">
+        <div class="dropdown-with-search">
+          <input type="text" id="tagSearch" class="compact tag-search" placeholder="Search and select tags..." />
+          <div id="tagDropdownMenu" class="dropdown-menu" style="display: none;">
+            {% for t in tags %}
+              <div class="dropdown-item" data-value="{{ t.name }}">{{ t.name }}</div>
+            {% endfor %}
+          </div>
+        </div>
+        <div id="selectedTags" class="selected-tags">
+          {% if selected_tags and selected_tags.strip() %}
+            {% for tag in selected_tags.split(',') %}
+              {% if tag.strip() %}
+                <span class="tag-chip" data-tag="{{ tag.strip() }}">
+                  {{ tag.strip() }}
+                  <span class="remove-tag">×</span>
+                </span>
+              {% endif %}
+            {% endfor %}
+          {% elif active_tag %}
+            <span class="tag-chip" data-tag="{{ active_tag }}">
+              {{ active_tag }}
+              <span class="remove-tag">×</span>
+            </span>
+          {% endif %}
+        </div>
+        <input type="hidden" name="tags" id="tagsInput" value="{% if selected_tags %}{{ selected_tags }}{% elif active_tag %}{{ active_tag }}{% endif %}" />
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Exclude tags:</label>
+      <div class="tag-selector-container">
+        <div class="dropdown-with-search">
+          <input type="text" id="excludeTagSearch" class="compact tag-search" placeholder="Search and exclude tags..." />
+          <div id="excludeTagDropdownMenu" class="dropdown-menu" style="display: none;">
+            {% for t in tags %}
+              <div class="dropdown-item" data-value="{{ t.name }}">{{ t.name }}</div>
+            {% endfor %}
+          </div>
+        </div>
+        <div id="excludedTags" class="selected-tags">
+          {% if exclude_tags and exclude_tags.strip() %}
+            {% for tag in exclude_tags.split(',') %}
+              {% if tag.strip() %}
+                <span class="tag-chip exclude-chip" data-tag="{{ tag.strip() }}">
+                  {{ tag.strip() }}
+                  <span class="remove-tag">×</span>
+                </span>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        </div>
+        <input type="hidden" name="exclude_tags" id="excludeTagsInput" value="{{ exclude_tags or '' }}" />
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Per page:</label>
+      <select name="page_size" class="compact" onchange="this.form.submit()">
+        <option value="20" {% if page_size==20 %}selected{% endif %}>20</option>
+        <option value="40" {% if page_size==40 %}selected{% endif %}>40</option>
+        <option value="60" {% if page_size==60 %}selected{% endif %}>60</option>
+        <option value="100" {% if page_size==100 %}selected{% endif %}>100</option>
+        <option value="200" {% if page_size==200 %}selected{% endif %}>200</option>
+        <option value="500" {% if page_size==500 %}selected{% endif %}>500</option>
+      </select>
+    </div>
+    <span class="results-info muted">{{ total }} results</span>
+    <a href="/export/preview?{% if q %}q={{ q }}{% if selected_tags or active_tag or exclude_tags %}&{% endif %}{% endif %}{% if selected_tags %}include_tags={{ selected_tags }}{% elif active_tag %}include_tags={{ active_tag }}{% endif %}{% if exclude_tags %}{% if selected_tags or active_tag %}&{% endif %}exclude_tags={{ exclude_tags }}{% endif %}" class="export-link">📤 Export Images</a>
+  </form>
+  
+  <div class="bulk-controls" id="bulkControls" style="display: none;">
+    <span class="selected-count" id="selectedCount">0 selected</span>
+    <button type="button" id="selectAll">Select All</button>
+    <button type="button" id="clearSelection">Clear</button>
+    <div class="bulk-actions">
+      <form method="post" action="/images/bulk/add_tag" id="bulkAddTagForm" style="display: inline;">
+        <input name="tag_name" placeholder="Add tag" list="taglist" />
+        <button type="submit">+ Add Tag</button>
+      </form>
+      <form method="post" action="/images/bulk/remove_tag" id="bulkRemoveTagForm" style="display: inline;">
+        <select name="tag_id">
+          <option value="">Remove tag...</option>
+          {% for t in tags %}
+          <option value="{{ t.id }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">- Remove Tag</button>
+      </form>
+      <form method="post" action="/images/bulk/delete" id="bulkDeleteForm" style="display: inline;">
+        <button type="submit" class="danger" onclick="return confirm('Delete selected images? This cannot be undone.')">🗑️ Delete</button>
+      </form>
+      <form method="post" action="/images/bulk/export" id="bulkExportForm" style="display: inline;">
+        <button type="submit" class="export-link" style="margin: 0; min-height: auto; padding: 8px 12px;">📤 Export Selected</button>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="grid">
+  {% for img in images %}
+  <article class="card" data-image-id="{{ img.id }}">
+    <div class="card-header">
+      <input type="checkbox" class="image-select" data-image-id="{{ img.id }}" />
+    </div>
+    <a href="/images/{{ img.id }}" title="Open" class="image-link">
+      <img loading="lazy" src="/thumb/{{ img.id }}?w=360" alt="{{ img.filename }}" />
+    </a>
+    <div class="meta">
+      <div class="fn">{{ img.filename }}</div>
+      <div class="chips">
+        {% for t in image_tags[img.id] %}{{ tag_chip(t) }}{% endfor %}
+      </div>
+      <details>
+        <summary>Tag it</summary>
+        <form method="post" action="/images/{{ img.id }}/tags/assign">
+          <input type="hidden" name="return_to" value="{{ current_url }}" />
+          <input name="name" placeholder="Add tag (enter)" list="taglist" />
+          <button>Add</button>
+        </form>
+        <div class="quick">
+          {% for t in quick_tags %}
+          <form method="post" action="/images/{{ img.id }}/tags/assign" class="inline">
+            <input type="hidden" name="return_to" value="{{ current_url }}" />
+            <input type="hidden" name="name" value="{{ t.name }}" />
+            <button type="submit" class="pill">+ {{ t.name }}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+    {% set has_posted = image_tags[img.id] | selectattr('name', 'equalto', 'Posted') | list | length > 0 %}
+    {% set has_i2v_done = image_tags[img.id] | selectattr('name', 'equalto', 'i2v done') | list | length > 0 %}
+    
+    <button type="button" 
+            class="posted-toggle {% if has_posted %}posted-active{% endif %}" 
+            data-image-id="{{ img.id }}"
+            data-posted="{{ 'true' if has_posted else 'false' }}"
+            title="{% if has_posted %}Remove 'Posted' tag{% else %}Mark as Posted{% endif %}">
+      {% if has_posted %}✓{% else %}○{% endif %}
+    </button>
+    
+    <button type="button" 
+            class="i2v-toggle {% if has_i2v_done %}i2v-active{% endif %}" 
+            data-image-id="{{ img.id }}"
+            data-i2v-done="{{ 'true' if has_i2v_done else 'false' }}"
+            title="{% if has_i2v_done %}Remove 'i2v done' tag{% else %}Mark as i2v done{% endif %}">
+      {% if has_i2v_done %}🎬{% else %}📹{% endif %}
+    </button>
+  </article>
+  {% endfor %}
+</div>
+
+<datalist id="taglist">
+  {% for t in tags %}<option value="{{ t.name }}">{% endfor %}
+</datalist>
+
+<div class="pager">
+  {% if page>1 %}<a href="{{ pager_url(page-1) }}">← Prev</a>{% endif %}
+  <span>Page {{ page }}</span>
+  {% if has_more %}<a href="{{ pager_url(page+1) }}">Next →</a>{% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM Content Loaded - Starting initialization');
+    const checkboxes = document.querySelectorAll('.image-select');
+    const bulkControls = document.getElementById('bulkControls');
+    const selectedCount = document.getElementById('selectedCount');
+    const selectAllBtn = document.getElementById('selectAll');
+    const clearSelectionBtn = document.getElementById('clearSelection');
+    const bulkForms = document.querySelectorAll('#bulkAddTagForm, #bulkRemoveTagForm, #bulkDeleteForm, #bulkExportForm');
+    
+    let selectedImages = new Set();
+    let lastClickedIndex = -1;
+    
+    function updateBulkControls() {
+        const count = selectedImages.size;
+        selectedCount.textContent = `${count} selected`;
+        bulkControls.style.display = count > 0 ? 'block' : 'none';
+        selectAllBtn.textContent = count === checkboxes.length ? 'Deselect All' : 'Select All';
+    }
+    
+    function updateFormInputs() {
+        // Remove existing hidden inputs
+        bulkForms.forEach(form => {
+            const existingInputs = form.querySelectorAll('input[name="image_ids"], input[name="return_to"]');
+            existingInputs.forEach(input => input.remove());
+        });
+        
+        // Add current selection to all forms
+        selectedImages.forEach(imageId => {
+            bulkForms.forEach(form => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'image_ids';
+                input.value = imageId;
+                form.appendChild(input);
+            });
+        });
+        
+        // Add return_to URL to preserve filters
+        bulkForms.forEach(form => {
+            const returnInput = document.createElement('input');
+            returnInput.type = 'hidden';
+            returnInput.name = 'return_to';
+            returnInput.value = window.location.href;
+            form.appendChild(returnInput);
+        });
+    }
+    
+    // Handle individual checkbox clicks
+    checkboxes.forEach((checkbox, index) => {
+        checkbox.addEventListener('click', function(e) {
+            const imageId = this.dataset.imageId;
+            
+            // Handle shift+click range selection
+            if (e.shiftKey && lastClickedIndex >= 0) {
+                const start = Math.min(lastClickedIndex, index);
+                const end = Math.max(lastClickedIndex, index);
+                
+                for (let i = start; i <= end; i++) {
+                    const cb = checkboxes[i];
+                    const id = cb.dataset.imageId;
+                    
+                    if (this.checked) {
+                        selectedImages.add(id);
+                        cb.checked = true;
+                        cb.closest('.card').classList.add('selected');
+                    } else {
+                        selectedImages.delete(id);
+                        cb.checked = false;
+                        cb.closest('.card').classList.remove('selected');
+                    }
+                }
+            } else {
+                // Normal single selection
+                if (this.checked) {
+                    selectedImages.add(imageId);
+                    this.closest('.card').classList.add('selected');
+                } else {
+                    selectedImages.delete(imageId);
+                    this.closest('.card').classList.remove('selected');
+                }
+            }
+            
+            lastClickedIndex = index;
+            updateBulkControls();
+            updateFormInputs();
+        });
+    });
+    
+    // Select/Deselect all button
+    selectAllBtn.addEventListener('click', function() {
+        const selectAll = selectedImages.size !== checkboxes.length;
+        
+        checkboxes.forEach(checkbox => {
+            const imageId = checkbox.dataset.imageId;
+            checkbox.checked = selectAll;
+            
+            if (selectAll) {
+                selectedImages.add(imageId);
+                checkbox.closest('.card').classList.add('selected');
+            } else {
+                selectedImages.delete(imageId);
+                checkbox.closest('.card').classList.remove('selected');
+            }
+        });
+        
+        updateBulkControls();
+        updateFormInputs();
+    });
+    
+    // Clear selection button
+    clearSelectionBtn.addEventListener('click', function() {
+        selectedImages.clear();
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+            checkbox.closest('.card').classList.remove('selected');
+        });
+        updateBulkControls();
+        updateFormInputs();
+    });
+    
+    // Prevent form submission if no images selected
+    bulkForms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (selectedImages.size === 0) {
+                e.preventDefault();
+                alert('Please select at least one image.');
+                return false;
+            }
+            
+            // For remove tag, check if tag is selected
+            if (form.id === 'bulkRemoveTagForm') {
+                const tagSelect = form.querySelector('select[name="tag_id"]');
+                if (!tagSelect.value) {
+                    e.preventDefault();
+                    alert('Please select a tag to remove.');
+                    return false;
+                }
+            }
+        });
+    });
+    
+    // Prevent clicks on checkboxes from opening image detail
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    });
+
+    // Posted toggle functionality
+    const postedToggles = document.querySelectorAll('.posted-toggle');
+    const i2vToggles = document.querySelectorAll('.i2v-toggle');
+    
+    postedToggles.forEach(toggle => {
+        toggle.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const imageId = this.dataset.imageId;
+            const isPosted = this.dataset.posted === 'true';
+            const action = isPosted ? 'remove' : 'assign';
+            
+            try {
+                // Disable button during request
+                this.disabled = true;
+                this.style.opacity = '0.5';
+                
+                const formData = new FormData();
+                formData.append('return_to', window.location.href);
+                
+                if (action === 'assign') {
+                    formData.append('name', 'posted');
+                } else {
+                    // For remove, we need to get or create the posted tag ID
+                    // We'll use a different approach - let's make this simpler
+                    const postedTagId = await getPostedTagId();
+                    formData.append('tag_id', postedTagId.toString());
+                }
+                
+                const url = action === 'assign' 
+                    ? `/images/${imageId}/tags/assign`
+                    : `/images/${imageId}/tags/remove`;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    // Update button state
+                    const newPosted = !isPosted;
+                    this.dataset.posted = newPosted.toString();
+                    this.innerHTML = newPosted ? '✓' : '○';
+                    this.title = newPosted ? "Remove 'posted' tag" : "Mark as posted";
+                    this.classList.toggle('posted-active', newPosted);
+                    
+                    console.log(`Successfully ${action}ed 'posted' tag for image ${imageId}`);
+                } else {
+                    throw new Error(`Failed to ${action} tag`);
+                }
+            } catch (error) {
+                console.error('Error toggling posted status:', error);
+                alert(`Failed to ${action} posted tag. Please try again.`);
+            } finally {
+                // Re-enable button
+                this.disabled = false;
+                this.style.opacity = '1';
+            }
+        });
+    });
+    
+    // Helper function to get posted tag ID
+    async function getPostedTagId() {
+        // We need to fetch the tag ID from the server
+        // Let's make a request to get all tags and find the posted tag ID
+        try {
+            const response = await fetch('/api/tags');
+            if (response.ok) {
+                const tags = await response.json();
+                const postedTag = tags.find(tag => tag.name === 'posted');
+                if (postedTag) {
+                    return postedTag.id;
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching posted tag ID:', error);
+        }
+        
+        // Fallback: create the posted tag if it doesn't exist
+        try {
+            const formData = new FormData();
+            formData.append('name', 'posted');
+            formData.append('color', '#4ade80'); // Green color
+            
+            const response = await fetch('/tags', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                // Refresh page to get the new tag
+                window.location.reload();
+                return null;
+            }
+        } catch (error) {
+            console.error('Error creating posted tag:', error);
+        }
+        
+        throw new Error('Could not find or create posted tag');
+    }
+
+    // i2v done toggle functionality  
+    i2vToggles.forEach(toggle => {
+        toggle.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const imageId = this.dataset.imageId;
+            const isI2vDone = this.dataset.i2vDone === 'true';
+            const action = isI2vDone ? 'remove' : 'assign';
+            
+            try {
+                // Disable button during request
+                this.disabled = true;
+                this.style.opacity = '0.5';
+                
+                const formData = new FormData();
+                formData.append('return_to', window.location.href);
+                
+                if (action === 'assign') {
+                    formData.append('name', 'i2v done');
+                } else {
+                    // For remove, we need to get the i2v done tag ID
+                    const i2vTagId = await getI2vDoneTagId();
+                    formData.append('tag_id', i2vTagId.toString());
+                }
+                
+                const url = action === 'assign' 
+                    ? `/images/${imageId}/tags/assign`
+                    : `/images/${imageId}/tags/remove`;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    // Update button state
+                    const newI2vDone = !isI2vDone;
+                    this.dataset.i2vDone = newI2vDone.toString();
+                    this.innerHTML = newI2vDone ? '🎬' : '📹';
+                    this.title = newI2vDone ? "Remove 'i2v done' tag" : "Mark as i2v done";
+                    this.classList.toggle('i2v-active', newI2vDone);
+                    
+                    console.log(`Successfully ${action}ed 'i2v done' tag for image ${imageId}`);
+                } else {
+                    throw new Error(`Failed to ${action} tag`);
+                }
+            } catch (error) {
+                console.error('Error toggling i2v done status:', error);
+                alert(`Failed to ${action} i2v done tag. Please try again.`);
+            } finally {
+                // Re-enable button
+                this.disabled = false;
+                this.style.opacity = '1';
+            }
+        });
+    });
+
+    // Helper function to get i2v done tag ID
+    async function getI2vDoneTagId() {
+        try {
+            const response = await fetch('/api/tags');
+            if (response.ok) {
+                const tags = await response.json();
+                const i2vTag = tags.find(tag => tag.name === 'i2v done');
+                if (i2vTag) {
+                    return i2vTag.id;
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching i2v done tag ID:', error);
+        }
+        
+        // Fallback: create the i2v done tag if it doesn't exist
+        try {
+            const formData = new FormData();
+            formData.append('name', 'i2v done');
+            formData.append('color', '#06d6a0'); // Teal color
+            
+            const response = await fetch('/tags', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                // Refresh page to get the new tag
+                window.location.reload();
+                return null;
+            }
+        } catch (error) {
+            console.error('Error creating i2v done tag:', error);
+        }
+        
+        throw new Error('Could not find or create i2v done tag');
+    }
+
+    // Tag selector functionality
+    const tagSearch = document.getElementById('tagSearch');
+    const tagDropdownMenu = document.getElementById('tagDropdownMenu');
+    const selectedTagsContainer = document.getElementById('selectedTags');
+    const tagsInput = document.getElementById('tagsInput');
+    const excludeTagSearch = document.getElementById('excludeTagSearch');
+    const excludeTagDropdownMenu = document.getElementById('excludeTagDropdownMenu');
+    const excludedTagsContainer = document.getElementById('excludedTags');
+    const excludeTagsInput = document.getElementById('excludeTagsInput');
+    const filterForm = document.getElementById('filterForm');
+
+    console.log('Tag search elements:', {
+        tagSearch: tagSearch,
+        hasId: tagSearch ? tagSearch.id : 'no element',
+        isInput: tagSearch ? tagSearch.tagName : 'no element',
+        isDisabled: tagSearch ? tagSearch.disabled : 'no element',
+        hasEventListener: tagSearch ? 'will test' : 'no element'
+    });
+
+    function updateTagsInput() {
+        const tags = Array.from(selectedTagsContainer.querySelectorAll('.tag-chip')).map(chip => chip.dataset.tag);
+        tagsInput.value = tags.join(',');
+    }
+
+    function updateExcludeTagsInput() {
+        const tags = Array.from(excludedTagsContainer.querySelectorAll('.tag-chip')).map(chip => chip.dataset.tag);
+        excludeTagsInput.value = tags.join(',');
+    }
+
+    function addTag(tagName) {
+        // Check if tag is already selected
+        if (selectedTagsContainer.querySelector(`[data-tag="${tagName}"]`)) {
+            return;
+        }
+
+        const tagChip = document.createElement('span');
+        tagChip.className = 'tag-chip';
+        tagChip.dataset.tag = tagName;
+        tagChip.innerHTML = `${tagName}<span class="remove-tag">×</span>`;
+        
+        selectedTagsContainer.appendChild(tagChip);
+        updateTagsInput();
+        filterForm.submit(); // Auto-submit when tag is added
+    }
+
+    function addExcludeTag(tagName) {
+        // Check if tag is already excluded
+        if (excludedTagsContainer.querySelector(`[data-tag="${tagName}"]`)) {
+            return;
+        }
+
+        const tagChip = document.createElement('span');
+        tagChip.className = 'tag-chip exclude-chip';
+        tagChip.dataset.tag = tagName;
+        tagChip.innerHTML = `${tagName}<span class="remove-tag">×</span>`;
+        
+        excludedTagsContainer.appendChild(tagChip);
+        updateExcludeTagsInput();
+        filterForm.submit(); // Auto-submit when tag is added
+    }
+
+    function removeTag(tagChip) {
+        tagChip.remove();
+        updateTagsInput();
+        filterForm.submit(); // Auto-submit when tag is removed
+    }
+
+    function removeExcludeTag(tagChip) {
+        tagChip.remove();
+        updateExcludeTagsInput();
+        filterForm.submit(); // Auto-submit when tag is removed
+    }
+
+    // Search functionality for include tags
+    function setupTagSearch(searchInput, dropdownMenu, addFunction) {
+        if (!searchInput || !dropdownMenu) {
+            console.log('Missing elements:', { searchInput, dropdownMenu });
+            return;
+        }
+        
+        console.log('Setting up tag search for:', searchInput.id);
+        const items = Array.from(dropdownMenu.querySelectorAll('.dropdown-item'));
+        console.log('Found items:', items.length);
+        
+        // Position dropdown correctly
+        function positionDropdown() {
+            const rect = searchInput.getBoundingClientRect();
+            
+            dropdownMenu.style.position = 'fixed';
+            dropdownMenu.style.top = (rect.bottom + 2) + 'px';
+            dropdownMenu.style.left = rect.left + 'px';
+            dropdownMenu.style.width = rect.width + 'px';
+            dropdownMenu.style.zIndex = '9999';
+            dropdownMenu.style.background = '#0e1218';
+            dropdownMenu.style.border = '1px solid #232a39';
+            dropdownMenu.style.borderRadius = '8px';
+            dropdownMenu.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.6)';
+            dropdownMenu.style.backdropFilter = 'blur(8px)';
+        }
+        
+        function filterItems(searchText) {
+            const filterText = (searchText || '').toString().toLowerCase();
+            
+            items.forEach((item) => {
+                const itemText = item.textContent.toLowerCase().trim();
+                const shouldShow = filterText === '' || itemText.includes(filterText);
+                
+                if (shouldShow) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+        
+        // Debounced search function to avoid too many calls
+        let searchTimeout = null;
+        function performSearch() {
+            const currentValue = searchInput.value;
+            positionDropdown();
+            dropdownMenu.style.display = 'block';
+            filterItems(currentValue);
+        }
+        
+        // Event listeners
+        searchInput.addEventListener('focus', function() {
+            performSearch();
+        });
+        
+        // Use both input and keyup events for better compatibility
+        searchInput.addEventListener('input', function(e) {
+            if (searchTimeout) clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(performSearch, 50);
+        });
+        
+        searchInput.addEventListener('keyup', function(e) {
+            if (searchTimeout) clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(performSearch, 50);
+        });
+        
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                dropdownMenu.style.display = 'none';
+                this.blur();
+            }
+        });
+        
+        searchInput.addEventListener('blur', function() {
+            setTimeout(() => {
+                dropdownMenu.style.display = 'none';
+            }, 200);
+        });
+        
+        // Handle item clicks
+        dropdownMenu.addEventListener('click', function(e) {
+            if (e.target.classList.contains('dropdown-item')) {
+                const tagName = e.target.dataset.value;
+                addFunction(tagName);
+                searchInput.value = '';
+                dropdownMenu.style.display = 'none';
+            }
+        });
+        
+        // Add hover effects
+        items.forEach(item => {
+            item.style.cursor = 'pointer';
+            
+            item.addEventListener('mouseenter', function() {
+                this.style.background = '#252a36';
+                this.style.color = '#7aa2ff';
+            });
+            
+            item.addEventListener('mouseleave', function() {
+                this.style.background = 'transparent';
+                this.style.color = '#e5e7eb';
+            });
+        });
+        
+        // Prevent blur on dropdown interaction
+        dropdownMenu.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+        });
+    }
+
+    // Debug: Check if elements exist
+    console.log('Tag search initialized:', !!tagSearch, !!tagDropdownMenu);
+
+    // Setup both dropdowns
+    if (tagSearch && tagDropdownMenu) {
+        console.log('Setting up main tag search');
+        setupTagSearch(tagSearch, tagDropdownMenu, addTag);
+    }
+
+    if (excludeTagSearch && excludeTagDropdownMenu) {
+        console.log('Setting up exclude tag search');
+        setupTagSearch(excludeTagSearch, excludeTagDropdownMenu, addExcludeTag);
+    }
+
+    // Handle remove tag clicks
+    if (selectedTagsContainer) {
+        selectedTagsContainer.addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-tag')) {
+                removeTag(e.target.parentElement);
+            }
+        });
+    }
+
+    if (excludedTagsContainer) {
+        excludedTagsContainer.addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-tag')) {
+                removeExcludeTag(e.target.parentElement);
+            }
+        });
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown-with-search')) {
+            document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                menu.style.display = 'none';
+            });
+            // Clear search inputs when clicking outside
+            setTimeout(() => {
+                if (tagSearch) tagSearch.value = '';
+                if (excludeTagSearch) excludeTagSearch.value = '';
+            }, 100);
+        }
+    });
+
+});
+</script>
+{% endblock %}

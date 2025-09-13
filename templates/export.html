@@ -1,0 +1,242 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Export Images</h1>
+
+<div class="export-summary">
+  <div class="summary-stats">
+    <div class="stat">
+      <span class="count">{{ total_count }}</span>
+      <span class="label">Images</span>
+    </div>
+    <div class="stat">
+      <span class="count">{{ "%.1f"|format(total_size / 1024 / 1024) }} MB</span>
+      <span class="label">Total Size</span>
+    </div>
+  </div>
+  
+</div>
+
+<div class="export-options">
+  <form id="filterForm" method="get" action="/export/preview" class="filter-section">
+    <h3>Filters</h3>
+    
+    <div class="filter-row">
+      <label>Search filename:</label>
+      <input type="text" name="q" value="{{ current_q or '' }}" placeholder="Search by filename..." />
+    </div>
+    
+    <div class="filter-row">
+      <label>Include images with tags:</label>
+      <div class="tag-selector-container">
+        <select id="tagDropdown" class="tag-dropdown">
+          <option value="">Select tags to include...</option>
+          {% for t in all_tags %}
+            <option value="{{ t.name }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <div id="selectedTags" class="selected-tags">
+          {% if include_tags %}
+            {% for tag in include_tags.split(',') %}
+              {% if tag.strip() %}
+                <span class="tag-chip" data-tag="{{ tag.strip() }}">
+                  {{ tag.strip() }}
+                  <span class="remove-tag">×</span>
+                </span>
+              {% endif %}
+            {% endfor %}
+          {% elif current_tag %}
+            <span class="tag-chip" data-tag="{{ current_tag }}">
+              {{ current_tag }}
+              <span class="remove-tag">×</span>
+            </span>
+          {% endif %}
+        </div>
+        <input type="hidden" name="include_tags" id="includeTagsInput" value="{% if include_tags %}{{ include_tags }}{% elif current_tag %}{{ current_tag }}{% endif %}" />
+      </div>
+    </div>
+    {% if image_ids %}<input type="hidden" name="image_ids" value="{{ image_ids }}" />{% endif %}
+    
+    <div class="filter-actions">
+      <button type="submit">Update Preview</button>
+      <a href="/images{% if current_q or include_tags or current_tag %}?{% endif %}{% if current_q %}q={{ current_q }}{% if include_tags or current_tag %}&{% endif %}{% endif %}{% if include_tags %}tags={{ include_tags }}{% elif current_tag %}tags={{ current_tag }}{% endif %}" class="button-link">Back to Images</a>
+    </div>
+  </form>
+</div>
+
+<div class="export-form">
+  <form method="post" action="/export/execute" class="export-section">
+    <h3>Export Options</h3>
+    
+    <!-- Pass all current filter parameters -->
+    {% if current_q %}<input type="hidden" name="q" value="{{ current_q }}" />{% endif %}
+    {% if current_tag %}<input type="hidden" name="tag" value="{{ current_tag }}" />{% endif %}
+    {% if include_tags %}<input type="hidden" name="include_tags" value="{{ include_tags }}" />{% endif %}
+    {% if exclude_tags %}<input type="hidden" name="exclude_tags" value="{{ exclude_tags }}" />{% endif %}
+    {% if image_ids %}<input type="hidden" name="image_ids" value="{{ image_ids }}" />{% endif %}
+    
+    <div class="export-row">
+      <label>Destination Folder:</label>
+      <div class="path-input">
+        <input type="text" name="destination" id="destinationPath" required placeholder="/path/to/export/folder" />
+        <button type="button" id="browseFolder">Browse...</button>
+      </div>
+      <p class="help-text">Choose where to copy the filtered images</p>
+    </div>
+    
+    <div class="export-row">
+      <label class="checkbox-label">
+        <input type="checkbox" name="preserve_structure" value="1" checked>
+        <span class="checkbox-text">Preserve folder structure</span>
+      </label>
+      <p class="help-text">Keep the original folder organization, or copy all images to a flat structure</p>
+    </div>
+    
+    <button type="submit" class="export-button" onclick="return confirm('Export {{ total_count }} images? This will copy them to the selected folder.')">
+      Export {{ total_count }} Images
+    </button>
+  </form>
+</div>
+
+<div class="image-preview">
+  <h3>Preview (first 20 images)</h3>
+  <div class="preview-grid">
+    {% for img in images[:20] %}
+    <article class="preview-card">
+      <div class="preview-image-container">
+        <img loading="lazy" src="/thumb/{{ img.id }}?w=200" alt="{{ img.filename }}" />
+      </div>
+      <div class="preview-name">{{ img.filename }}</div>
+    </article>
+    {% endfor %}
+  </div>
+  {% if total_count > 20 %}
+    <p class="muted">... and {{ total_count - 20 }} more images</p>
+  {% endif %}
+</div>
+
+<datalist id="taglist">
+  {% for t in all_tags %}<option value="{{ t.name }}">{% endfor %}
+</datalist>
+
+{% if msg %}
+  <div class="flash success">{{ msg.replace('+', ' ') }}</div>
+{% endif %}
+
+{% if error %}
+  <div class="flash error">{{ error.replace('+', ' ') }}</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const browseButton = document.getElementById('browseFolder');
+    const destinationInput = document.getElementById('destinationPath');
+    
+    // Check if the modern File System Access API is supported
+    const supportsFileSystemAPI = 'showDirectoryPicker' in window;
+    
+    browseButton.addEventListener('click', async function() {
+        if (supportsFileSystemAPI) {
+            try {
+                // Use modern File System Access API
+                const directoryHandle = await window.showDirectoryPicker({
+                    mode: 'readwrite'
+                });
+                
+                // Get the directory path (note: this may not work in all browsers)
+                if (directoryHandle.name) {
+                    destinationInput.value = directoryHandle.name;
+                } else {
+                    destinationInput.value = 'Selected folder: ' + (directoryHandle.name || 'Unknown');
+                }
+                
+                // Store the directory handle for later use
+                destinationInput.dataset.directoryHandle = JSON.stringify(directoryHandle);
+                
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('Directory selection failed:', err);
+                    fallbackPrompt();
+                }
+            }
+        } else {
+            fallbackPrompt();
+        }
+    });
+    
+    function fallbackPrompt() {
+        // Fallback to simple prompt
+        const path = prompt('Enter the full path to the destination folder:', destinationInput.value || '/home/nadertate/Desktop/Exported Images');
+        if (path) {
+            destinationInput.value = path;
+        }
+    }
+    
+    // Auto-suggest some common export paths
+    const suggestions = [
+        '/home/nadertate/Desktop/Exported Images',
+        '/home/nadertate/Downloads/Exported Images',
+        '/tmp/exported_images'
+    ];
+    
+    destinationInput.addEventListener('focus', function() {
+        if (!this.value) {
+            this.placeholder = suggestions[0];
+        }
+    });
+    
+    // Improve button text based on API support
+    if (supportsFileSystemAPI) {
+        browseButton.textContent = '📁 Browse...';
+        browseButton.title = 'Open folder picker';
+    } else {
+        browseButton.textContent = '📝 Enter Path...';
+        browseButton.title = 'Enter folder path manually';
+    }
+
+    // Tag selector functionality
+    const tagDropdown = document.getElementById('tagDropdown');
+    const selectedTagsContainer = document.getElementById('selectedTags');
+    const includeTagsInput = document.getElementById('includeTagsInput');
+
+    function updateTagsInput() {
+        const tags = Array.from(selectedTagsContainer.querySelectorAll('.tag-chip')).map(chip => chip.dataset.tag);
+        includeTagsInput.value = tags.join(',');
+    }
+
+    function addTag(tagName) {
+        // Check if tag is already selected
+        if (selectedTagsContainer.querySelector(`[data-tag="${tagName}"]`)) {
+            return;
+        }
+
+        const tagChip = document.createElement('span');
+        tagChip.className = 'tag-chip';
+        tagChip.dataset.tag = tagName;
+        tagChip.innerHTML = `${tagName}<span class="remove-tag">×</span>`;
+        
+        selectedTagsContainer.appendChild(tagChip);
+        updateTagsInput();
+    }
+
+    function removeTag(tagChip) {
+        tagChip.remove();
+        updateTagsInput();
+    }
+
+    // Handle dropdown selection
+    tagDropdown.addEventListener('change', function() {
+        if (this.value) {
+            addTag(this.value);
+            this.value = ''; // Reset dropdown
+        }
+    });
+
+    // Handle remove tag clicks
+    selectedTagsContainer.addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-tag')) {
+            removeTag(e.target.parentElement);
+        }
+    });
+});
+</script>
+{% endblock %}

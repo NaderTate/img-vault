@@ -1,0 +1,22 @@
+# Image Vault - Requirements
+# FastAPI and web framework dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+jinja2>=3.1.2
+python-multipart>=0.0.6
+
+# Database and ORM
+sqlmodel>=0.0.14
+sqlalchemy>=2.0.23
+
+# Image processing
+pillow>=10.0.0
+
+# Additional dependencies that may be needed
+starlette>=0.27.0
+pydantic>=2.0.0
+typing-extensions>=4.8.0
+
+# For development (optional)
+# pytest>=7.4.0
+# httpx>=0.25.0  # for testing FastAPI apps

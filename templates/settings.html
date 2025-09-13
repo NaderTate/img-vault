@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Settings</h1>
+<form method="post" action="/scan" class="settings">
+  <label>Root folder</label>
+  <input name="root_dir" value="{{ root or '' }}" placeholder="/path/to/Vault" required />
+  
+  <div class="scan-options">
+    <h3>Scan Options</h3>
+    <div class="option-item">
+      <label class="checkbox-label">
+        <input type="checkbox" name="auto_tag" value="1" checked> 
+        <span class="checkbox-text">Auto-create tags from folder names</span>
+      </label>
+      <p class="help-text">
+        Automatically creates and assigns tags based on folder structure.<br>
+        Example: "Ready for upscale/Home/image.jpg" → gets tags "Ready For Upscale" and "Home"
+      </p>
+    </div>
+    
+    <div class="option-item">
+      <label class="checkbox-label">
+        <input type="checkbox" name="cleanup" value="1"> 
+        <span class="checkbox-text">Remove orphaned database entries</span>
+      </label>
+      <p class="help-text">Remove database entries for files that no longer exist on disk.</p>
+    </div>
+  </div>
+  
+  <div class="danger-zone">
+    <h3>⚠️ Danger Zone</h3>
+    <div class="option-item">
+      <label class="checkbox-label">
+        <input type="checkbox" name="reset_db" value="1" id="resetDb"> 
+        <span class="checkbox-text">Reset database before scanning</span>
+      </label>
+      <p class="help-text danger-text">
+        <strong>WARNING:</strong> This will delete ALL images and tags from the database and start fresh. 
+        Use this if you want to completely re-organize your tags based on current folder structure.
+      </p>
+    </div>
+  </div>
+  
+  <button>Scan Now</button>
+</form>
+{% if last_scan %}<p class="muted">Last scan: {{ last_scan | datetime }}</p>{% endif %}
+{% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const resetCheckbox = document.getElementById('resetDb');
+    const form = document.querySelector('.settings');
+    
+    form.addEventListener('submit', function(e) {
+        if (resetCheckbox.checked) {
+            if (!confirm('Are you sure you want to RESET THE DATABASE? This will delete all current tags and image records. This cannot be undone!')) {
+                e.preventDefault();
+                resetCheckbox.checked = false;
+                return false;
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

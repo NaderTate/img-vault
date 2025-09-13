@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Tags</h1>
+<div class="twocol">
+  <section>
+    <h3>Create</h3>
+    <form method="post" action="/tags">
+      <label>Name</label>
+      <input name="name" required />
+      <label>Color</label>
+      <input name="color" type="color" value="#4477ff" />
+      <label>Description</label>
+      <input name="description" />
+      <button>Create</button>
+    </form>
+  </section>
+  <section>
+    <h3>All tags ({{ tags|length }})</h3>
+    <table class="tbl">
+      <thead><tr><th>Name</th><th>Color</th><th>Description</th><th>Count</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for t in tags %}
+        <tr id="tag-{{ t.id }}">
+          <td>
+            <span class="tag-display" id="display-{{ t.id }}">
+              <a href="/images?tag={{ t.name }}">{{ t.name }}</a>
+            </span>
+            <form method="post" action="/tags/{{ t.id }}/update" class="tag-edit-form" id="edit-form-{{ t.id }}" style="display: none;">
+              <input name="name" value="{{ t.name }}" required style="width: 120px;" />
+            </form>
+          </td>
+          <td>
+            <span class="tag-display" id="color-display-{{ t.id }}">
+              <span class="swatch" style="background: {{ t.color or '#444' }};"></span>
+            </span>
+            <span class="tag-edit-form" id="color-edit-{{ t.id }}" style="display: none;">
+              <input name="color" type="color" value="{{ t.color or '#4477ff' }}" form="edit-form-{{ t.id }}" />
+            </span>
+          </td>
+          <td>
+            <span class="tag-display" id="desc-display-{{ t.id }}">{{ t.description or '' }}</span>
+            <span class="tag-edit-form" id="desc-edit-{{ t.id }}" style="display: none;">
+              <input name="description" value="{{ t.description or '' }}" form="edit-form-{{ t.id }}" style="width: 150px;" />
+            </span>
+          </td>
+          <td>{{ tag_counts[t.id] }}</td>
+          <td>
+            <span class="tag-display" id="actions-display-{{ t.id }}">
+              <button onclick="editTag({{ t.id }})" class="edit-btn">Edit</button>
+              <form method="post" action="/tags/{{ t.id }}/delete" style="display: inline;" onsubmit="return confirm('Delete tag?');">
+                <button class="danger">Delete</button>
+              </form>
+            </span>
+            <span class="tag-edit-form" id="actions-edit-{{ t.id }}" style="display: none;">
+              <button type="submit" form="edit-form-{{ t.id }}" class="save-btn">Save</button>
+              <button onclick="cancelEdit({{ t.id }})" type="button" class="cancel-btn">Cancel</button>
+            </span>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+function editTag(tagId) {
+    // Hide display elements
+    document.querySelectorAll(`#tag-${tagId} .tag-display`).forEach(el => el.style.display = 'none');
+    // Show edit elements
+    document.querySelectorAll(`#tag-${tagId} .tag-edit-form`).forEach(el => el.style.display = 'inline');
+}
+
+function cancelEdit(tagId) {
+    // Show display elements
+    document.querySelectorAll(`#tag-${tagId} .tag-display`).forEach(el => el.style.display = 'inline');
+    // Hide edit elements
+    document.querySelectorAll(`#tag-${tagId} .tag-edit-form`).forEach(el => el.style.display = 'none');
+}
+</script>
+
+{% endblock %}
