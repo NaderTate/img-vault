@@ -41,7 +41,20 @@ def fmt_datetime(value):
         return str(value)
 
 
+def fmt_filesize(size_bytes):
+    """Format file size in human readable format."""
+    if size_bytes == 0:
+        return "0 B"
+    
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} PB"
+
+
 jinja_env.filters["datetime"] = fmt_datetime
+jinja_env.filters["filesize"] = fmt_filesize
 
 
 def render(name: str, **ctx) -> HTMLResponse:
@@ -70,8 +83,8 @@ def render(name: str, **ctx) -> HTMLResponse:
 
 
 def index():
-    """Root route redirects to images."""
-    return RedirectResponse("/images")
+    """Root route redirects to dashboard."""
+    return RedirectResponse("/dashboard")
 
 
 def settings(request: Request, msg: Optional[str] = None):
@@ -749,6 +762,157 @@ def open_folder(image_id: int):
     
     # Return a simple success response
     return {"success": True, "message": "Folder opened"}
+
+
+def dashboard():
+    """Dashboard page with statistics and insights."""
+    with get_session() as s:
+        # Basic statistics
+        total_images = len(s.exec(select(Image)).all())
+        total_tags = len(s.exec(select(Tag)).all())
+        
+        # Get all images to calculate size and recent activity
+        all_images = s.exec(select(Image)).all()
+        total_size = sum(img.size for img in all_images)
+        
+        # Recent images (last 7 days)
+        recent_threshold = (datetime.utcnow().timestamp() - (7 * 24 * 60 * 60))
+        recent_images = [img for img in all_images if img.created_at.timestamp() > recent_threshold]
+        
+        # Tag statistics with image counts
+        tag_stats = []
+        tags = s.exec(select(Tag).order_by(Tag.name)).all()
+        for tag in tags:
+            count = len(s.exec(
+                select(ImageTagLink).where(ImageTagLink.tag_id == tag.id)
+            ).all())
+            if count > 0:  # Only include tags that have images
+                tag_stats.append({
+                    'name': tag.name,
+                    'color': tag.color or '#444',
+                    'count': count,
+                    'percentage': (count / total_images * 100) if total_images > 0 else 0
+                })
+        
+        # Sort by count descending
+        tag_stats.sort(key=lambda x: x['count'], reverse=True)
+        
+        # Top directories analysis
+        dir_stats = {}
+        for img in all_images:
+            dir_path = Path(img.dirpath).name or "Root"
+            if dir_path not in dir_stats:
+                dir_stats[dir_path] = {'count': 0, 'size': 0}
+            dir_stats[dir_path]['count'] += 1
+            dir_stats[dir_path]['size'] += img.size
+        
+        # Convert to list and sort
+        directory_stats = [
+            {'name': name, **stats, 'percentage': (stats['count'] / total_images * 100) if total_images > 0 else 0}
+            for name, stats in dir_stats.items()
+        ]
+        directory_stats.sort(key=lambda x: x['count'], reverse=True)
+        directory_stats = directory_stats[:10]  # Top 10 directories
+        
+        # Image dimensions analysis
+        resolution_stats = {}
+        for img in all_images:
+            if img.width > 0 and img.height > 0:
+                # Categorize by resolution
+                pixels = img.width * img.height
+                if pixels >= 3840 * 2160:
+                    category = "4K+ (3840×2160+)"
+                elif pixels >= 2560 * 1440:
+                    category = "QHD (2560×1440+)"
+                elif pixels >= 1920 * 1080:
+                    category = "FHD (1920×1080+)"
+                elif pixels >= 1280 * 720:
+                    category = "HD (1280×720+)"
+                else:
+                    category = "SD (<1280×720)"
+                
+                if category not in resolution_stats:
+                    resolution_stats[category] = 0
+                resolution_stats[category] += 1
+        
+        resolution_list = [
+            {'name': name, 'count': count, 'percentage': (count / total_images * 100) if total_images > 0 else 0}
+            for name, count in resolution_stats.items()
+        ]
+        resolution_list.sort(key=lambda x: x['count'], reverse=True)
+        
+        # File format analysis
+        format_stats = {}
+        for img in all_images:
+            ext = Path(img.filename).suffix.lower()
+            if ext not in format_stats:
+                format_stats[ext] = 0
+            format_stats[ext] += 1
+        
+        format_list = [
+            {'name': ext or 'No extension', 'count': count, 'percentage': (count / total_images * 100) if total_images > 0 else 0}
+            for ext, count in format_stats.items()
+        ]
+        format_list.sort(key=lambda x: x['count'], reverse=True)
+        
+        # Workflow status (special tags)
+        workflow_tags = ["Needs Inpainting", "Ready For i2v", "Ready for Upscale", "Posted", "i2v done"]
+        workflow_stats = []
+        for tag_name in workflow_tags:
+            tag = s.exec(select(Tag).where(Tag.name == tag_name)).first()
+            if tag:
+                count = len(s.exec(
+                    select(ImageTagLink).where(ImageTagLink.tag_id == tag.id)
+                ).all())
+                workflow_stats.append({
+                    'name': tag.name,
+                    'color': tag.color or '#444',
+                    'count': count,
+                    'percentage': (count / total_images * 100) if total_images > 0 else 0
+                })
+        
+        # Get latest images for preview
+        latest_images = s.exec(
+            select(Image).order_by(Image.created_at.desc()).limit(6)
+        ).all()
+        
+        # Storage breakdown by size ranges
+        size_ranges = [
+            ('< 1MB', 0, 1024*1024),
+            ('1-5MB', 1024*1024, 5*1024*1024),
+            ('5-10MB', 5*1024*1024, 10*1024*1024),
+            ('10-50MB', 10*1024*1024, 50*1024*1024),
+            ('> 50MB', 50*1024*1024, float('inf'))
+        ]
+        
+        size_stats = []
+        for name, min_size, max_size in size_ranges:
+            count = len([img for img in all_images if min_size <= img.size < max_size])
+            total_size_range = sum(img.size for img in all_images if min_size <= img.size < max_size)
+            size_stats.append({
+                'name': name,
+                'count': count,
+                'size': total_size_range,
+                'percentage': (count / total_images * 100) if total_images > 0 else 0
+            })
+    
+    return render(
+        "dashboard.html",
+        title="Dashboard",
+        total_images=total_images,
+        total_tags=total_tags,
+        total_size=total_size,
+        recent_images_count=len(recent_images),
+        tag_stats=tag_stats,
+        directory_stats=directory_stats,
+        resolution_stats=resolution_list,
+        format_stats=format_list,
+        workflow_stats=workflow_stats,
+        latest_images=latest_images,
+        size_stats=size_stats,
+        root_dir=get_setting("root_dir"),
+        last_scan=get_setting("last_scan")
+    )
 
 
 def api_get_tags():

@@ -34,6 +34,7 @@ from routes import (
     bulk_export_images,
     bulk_remove_tag,
     create_tag,
+    dashboard,
     delete_image,
     delete_tag,
     export_execute,
@@ -134,6 +135,7 @@ seed_default_tags()
 
 # Routes
 app.get("/", response_class="HTMLResponse")(index)
+app.get("/dashboard", response_class="HTMLResponse")(dashboard)
 app.get("/settings", response_class="HTMLResponse")(settings)
 app.post("/scan", response_class="HTMLResponse")(scan_route)
 app.get("/tags", response_class="HTMLResponse")(get_tags)

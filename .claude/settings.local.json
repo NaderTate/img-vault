@@ -9,7 +9,8 @@
       "Bash(true)",
       "Bash(lsof:*)",
       "Bash(curl:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": []
   }
